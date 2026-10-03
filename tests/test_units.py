@@ -169,8 +169,8 @@ def test_verifier_reports_no_problems():
 
 def test_meter_accumulates_cost_and_attributes_it_by_agent():
     meter = BudgetMeter("T-01", max_cost_usd=1.0, max_tokens=100_000)
-    meter.record("triage", "gpt-4o-mini", 1_000, 200)
-    meter.record("resolver", "gpt-4o", 2_000, 500)
+    meter.record("triage", "openai/gpt-4o-mini", 1_000, 200)
+    meter.record("resolver", "openai/gpt-4o", 2_000, 500)
     assert meter.total_tokens == 3_700
     assert meter.total_cost_usd == pytest.approx(0.010270, rel=1e-3)
     assert next(iter(meter.by_agent())) == "resolver"
@@ -179,13 +179,13 @@ def test_meter_accumulates_cost_and_attributes_it_by_agent():
 def test_meter_raises_on_token_overrun():
     meter = BudgetMeter("T-01", max_cost_usd=10.0, max_tokens=1_000)
     with pytest.raises(BudgetExceeded, match="tokens"):
-        meter.record("resolver", "gpt-4o-mini", 900, 200)
+        meter.record("resolver", "openai/gpt-4o-mini", 900, 200)
 
 
 def test_meter_raises_on_cost_overrun():
     meter = BudgetMeter("T-01", max_cost_usd=0.001, max_tokens=1_000_000)
     with pytest.raises(BudgetExceeded, match=r"\$"):
-        meter.record("resolver", "gpt-4o", 10_000, 10_000)
+        meter.record("resolver", "openai/gpt-4o", 10_000, 10_000)
 
 
 def test_unknown_model_falls_back_to_a_price_rather_than_free():

@@ -36,16 +36,23 @@ AS_OF = date(2026, 10, 1)
 
 # --- Models ------------------------------------------------------------------
 
-TRIAGE_MODEL = os.getenv("TRIAGE_MODEL", "gpt-4o-mini")
-KNOWLEDGE_MODEL = os.getenv("KNOWLEDGE_MODEL", "gpt-4o-mini")
-ACCOUNT_MODEL = os.getenv("ACCOUNT_MODEL", "gpt-4o-mini")
-RESOLVER_MODEL = os.getenv("RESOLVER_MODEL", "gpt-4o")
-CRITIC_MODEL = os.getenv("CRITIC_MODEL", "gpt-4o-mini")
+# OpenRouter is an OpenAI-compatible endpoint: langchain-openai's ChatOpenAI works unchanged
+# once base_url and api_key point here. Model ids are OpenRouter's "provider/model" form.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 
-# USD per 1M tokens, (prompt, completion). Update to match your provider's current pricing.
+TRIAGE_MODEL = os.getenv("TRIAGE_MODEL", "openai/gpt-4o-mini")
+KNOWLEDGE_MODEL = os.getenv("KNOWLEDGE_MODEL", "openai/gpt-4o-mini")
+ACCOUNT_MODEL = os.getenv("ACCOUNT_MODEL", "openai/gpt-4o-mini")
+RESOLVER_MODEL = os.getenv("RESOLVER_MODEL", "openai/gpt-4o")
+CRITIC_MODEL = os.getenv("CRITIC_MODEL", "openai/gpt-4o-mini")
+
+# USD per 1M tokens, (prompt, completion). OpenRouter passes through provider pricing;
+# check https://openrouter.ai/models for the current rate of whichever model you pick.
 MODEL_PRICING: dict[str, tuple[float, float]] = {
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-4o": (2.50, 10.00),
+    "openai/gpt-4o-mini": (0.15, 0.60),
+    "openai/gpt-4o": (2.50, 10.00),
+    "google/gemma-4-26b-a4b-it:free": (0.0, 0.0),
 }
 FALLBACK_PRICING = (1.00, 3.00)
 
