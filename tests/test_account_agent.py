@@ -31,11 +31,11 @@ def test_resolves_single_order_mentioned_in_text(conn):
     assert result.shipment is not None
 
 
-def test_found_with_no_order_id_in_text(conn):
+def test_no_order_id_in_text_is_its_own_status(conn):
     result = account_lookup(
         "How do I factory reset my Lumen?", "elena.marchetti@example.com", conn=conn
     )
-    assert result.status == "found"
+    assert result.status == "no_order_referenced"
     assert result.order is None
     assert result.customer is not None
 
@@ -86,7 +86,7 @@ def test_injection_payload_in_ticket_text_is_harmless(conn):
         f"My order never arrived {payload}", "jonas.wexler@example.com", conn=conn
     )
     # The payload matches no order-id pattern, so it is simply never looked up.
-    assert result.status == "found"
+    assert result.status == "no_order_referenced"
     assert result.order is None
     counts = db.table_counts(conn)
     assert counts["orders"] == 25
