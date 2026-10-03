@@ -54,12 +54,30 @@ setx UV_SYSTEM_CERTS 1     # once, then reopen the terminal
 
 Or pass `--system-certs` on each command.
 
+### If live model calls are blocked
+
+Some corporate proxies run a CASB/DLP policy that blocks POST requests to AI chat-completion
+endpoints (OpenRouter, OpenAI, Anthropic) and model downloads (Hugging Face) specifically —
+even when plain `GET` to the same domains succeeds. You'll see an `OpenAIPermissionDeniedError`
+wrapping an HTML "justification required" page, not a connection error.
+
+This is a policy decision, not a bug — don't try to route around it. Options, in order:
+1. Ask IT to allow-list the specific endpoint you need.
+2. Ask IT (or someone with admin rights) to install [Ollama](https://ollama.com) for a fully
+   local model — no outbound AI traffic at all.
+3. Ask around for an internal/approved LLM gateway other tools in your org already use.
+
+Until one of those lands, agent code can still be written and unit-tested offline: every
+agent accepts an injectable `llm` client (see `tests/test_triage.py`), so retry/fallback
+logic is fully verified without a live endpoint. Only the golden-set accuracy scorer
+(`support-desk-score-triage`) needs real access.
+
 ## Status
 
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Foundations — seed data, policy corpus, golden set, budget meter | **done** |
-| 1 | One agent, no tools — triage with structured output | todo |
+| 1 | One agent, no tools — triage with structured output | **code-complete, live scoring blocked** ([details](#if-live-model-calls-are-blocked)) |
 | 2 | Tools — parameterised account lookups | todo |
 | 3 | Multiple agents and a graph | todo |
 | 4 | RAG and parallelism | todo |
