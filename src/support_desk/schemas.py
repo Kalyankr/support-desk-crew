@@ -64,11 +64,22 @@ class ShipmentRecord(BaseModel):
     last_scan_at: date | None
 
 
-AccountStatus = Literal["found", "not_found", "ambiguous", "tool_error"]
+AccountStatus = Literal[
+    "found",
+    "no_order_referenced",
+    "not_found",
+    "ambiguous",
+    "tool_error",
+]
 
 
 class AccountLookup(BaseModel):
-    """The Account agent's result. Deterministic — no model call, see agents/account.py."""
+    """What the Account agent resolved for a ticket.
+
+    `found` always means an order was resolved; a ticket that legitimately references no
+    order returns `no_order_referenced` so downstream agents never have to null-check to
+    tell "nothing to look up" apart from "looked up successfully".
+    """
 
     customer: CustomerRecord | None = None
     order: OrderRecord | None = None
