@@ -14,7 +14,9 @@ from support_desk import config
 def connect(db_path: Path | None = None) -> sqlite3.Connection:
     path = db_path or config.DB_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    # Phase 4 runs account and knowledge in parallel threads; sqlite3.threadsafety == 3
+    # (serialized) on CPython, so sharing one connection across them is safe.
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
