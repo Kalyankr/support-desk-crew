@@ -79,7 +79,7 @@ logic is fully verified without a live endpoint. Only the golden-set accuracy sc
 | 0 | Foundations — seed data, policy corpus, golden set, budget meter | **done** |
 | 1 | One agent, no tools — triage with structured output | **code-complete, live scoring blocked** ([details](#if-live-model-calls-are-blocked)) |
 | 2 | Tools — parameterised account lookups | **done** — tool-calling loop + deterministic fallback, fully offline |
-| 3 | Multiple agents and a graph | todo |
+| 3 | Multiple agents and a graph | **code-complete, action accuracy blocked** ([details](#if-live-model-calls-are-blocked)) |
 | 4 | RAG and parallelism | todo |
 | 5 | Guardrails, critic, budgets | todo |
 | 6 | Human in the loop | todo |
