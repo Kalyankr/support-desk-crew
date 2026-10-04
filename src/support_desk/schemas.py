@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Category = Literal["billing", "product", "shipping", "unknown"]
 Urgency = Literal["low", "medium", "high"]
@@ -87,3 +87,53 @@ class AccountLookup(BaseModel):
     shipment: ShipmentRecord | None = None
     status: AccountStatus
     detail: str = ""
+
+
+# --- Phase 3: knowledge and resolution ---------------------------------------
+
+
+class KnowledgeResult(BaseModel):
+    """Policy material relevant to a ticket.
+
+    Phase 3 fills this from a hard-coded category->document map (see agents/knowledge.py);
+    Phase 4 replaces that with real retrieval. The contract stays the same either way.
+    """
+
+    snippets: list[str] = Field(default_factory=list)
+    citations: list[str] = Field(default_factory=list)
+    stub: bool = True
+
+
+ActionType = Literal[
+    "reply_only",
+    "resend_tracking",
+    "replace_unit",
+    "refund",
+    "escalate_to_human",
+]
+
+
+class ProposedAction(BaseModel):
+    """What the Resolver wants to do. Proposed only — Phase 5's Policy Guard may veto it."""
+
+    type: ActionType
+    amount: float | None = None
+
+    @model_validator(mode="after")
+    def _amount_matches_type(self) -> ProposedAction:
+        if self.type == "refund" and self.amount is None:
+            raise ValueError("refund actions must state an amount")
+        if self.type != "refund" and self.amount is not None:
+            raise ValueError(f"{self.type} actions must not carry an amount")
+        return self
+
+    def __str__(self) -> str:
+        return f"refund({self.amount:.2f})" if self.type == "refund" else self.type
+
+
+class Resolution(BaseModel):
+    """The Resolver agent's output: an action plus the customer-facing reply."""
+
+    action: ProposedAction
+    reply: str = Field(min_length=1)
+    citations: list[str] = Field(default_factory=list)
