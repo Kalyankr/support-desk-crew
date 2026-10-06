@@ -12,7 +12,7 @@ other. Every other field is written by exactly one node, which is why plain over
 from __future__ import annotations
 
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from support_desk.schemas import AccountLookup, KnowledgeResult, Resolution, TriageResult
 
@@ -25,6 +25,10 @@ class TicketState(TypedDict):
     account: AccountLookup | None
     knowledge: KnowledgeResult | None
     resolution: Resolution | None
+    guard: Any | None
+    verdict: Any | None
+    feedback: Annotated[list[str], operator.add]
+    needs_approval: bool
     attempts: int
     trace: Annotated[list[str], operator.add]
 
@@ -38,6 +42,10 @@ def initial_state(ticket_id: str, ticket_text: str, customer_email: str) -> Tick
         account=None,
         knowledge=None,
         resolution=None,
+        guard=None,
+        verdict=None,
+        feedback=[],
+        needs_approval=False,
         attempts=0,
         trace=[],
     )

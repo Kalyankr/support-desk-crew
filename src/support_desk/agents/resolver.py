@@ -39,9 +39,12 @@ Rules:
 - Write the reply to the customer directly, plainly, and without promising timelines.
 
 Respond with ONLY this JSON, no prose and no markdown fences:
-{"action": {"type": "<action>", "amount": <number or omit>},
+{"action": {"type": "<action>", "amount": <number or omit>, "basis": "<basis or omit>"},
  "reply": "<text to the customer>",
- "citations": ["<policy-file.md>"]}
+ "citations": ["<policy-file.md#section>"]}
+
+For a refund you must also give `basis`, one of:
+  change_of_mind | duplicate_charge | warranty | expedited_fee
 """
 
 _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
@@ -57,13 +60,14 @@ def _facts(account: AccountLookup | None) -> str:
     lines = [f"lookup_status: {account.status}"]
     if account.detail:
         lines.append(f"lookup_detail: {account.detail}")
+    lines.append(f"duplicate_charge: {account.is_duplicate_charge}")
     for label, record in (
         ("customer", account.customer),
         ("order", account.order),
-        ("payment", account.payment),
         ("shipment", account.shipment),
     ):
         lines.append(f"{label}: {record.model_dump_json() if record else 'none'}")
+    lines.append(f"payments: {[json.loads(p.model_dump_json()) for p in account.payments]}")
     return "\n".join(lines)
 
 
@@ -91,6 +95,7 @@ def resolve(
     llm: _ChatModel,
     meter: BudgetMeter | None = None,
     max_retries: int = 2,
+    feedback: list[str] | None = None,
 ) -> Resolution:
     """Propose an action and draft a reply, falling back to escalation if unparsable."""
     context = (
@@ -101,6 +106,9 @@ def resolve(
         f"account facts:\n{_facts(account)}\n\n"
         f"policy:\n{_policy(knowledge)}"
     )
+    if feedback:
+        rejections = "\n".join(f"- {item}" for item in feedback)
+        context += f"\n\nA previous attempt was rejected. Fix these and try again:\n{rejections}"
 
     for attempt in range(max_retries + 1):
         try:
