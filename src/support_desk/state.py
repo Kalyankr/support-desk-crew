@@ -12,8 +12,10 @@ other. Every other field is written by exactly one node, which is why plain over
 from __future__ import annotations
 
 import operator
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, TypedDict
 
+from support_desk.agents.critic import CriticVerdict
+from support_desk.guard.policy_guard import Decision
 from support_desk.schemas import AccountLookup, KnowledgeResult, Resolution, TriageResult
 
 
@@ -25,8 +27,8 @@ class TicketState(TypedDict):
     account: AccountLookup | None
     knowledge: KnowledgeResult | None
     resolution: Resolution | None
-    guard: Any | None
-    verdict: Any | None
+    guard: Decision | None
+    verdict: CriticVerdict | None
     feedback: Annotated[list[str], operator.add]
     needs_approval: bool
     attempts: int
