@@ -65,6 +65,10 @@ def _resolver_llm(action: str = "reply_only") -> _ScriptedLLM:
     )
 
 
+def _critic_llm() -> _ScriptedLLM:
+    return _ScriptedLLM(json.dumps({"verdict": "approve"}))
+
+
 # --- Routing is deterministic code, not a model decision ----------------------
 
 
@@ -136,22 +140,19 @@ def test_both_branches_append_to_the_shared_trace(conn, collection):
     graph = build_graph(
         triage_llm=_triage_llm("billing"),
         resolver_llm=_resolver_llm(),
+        critic_llm=_critic_llm(),
         conn=conn,
         collection=collection,
     )
     final = graph.invoke(
         initial_state("T-01", "charged twice for L-10422", "jonas.wexler@example.com")
     )
-    # Concurrent writes to `trace` must merge, not overwrite: all four entries survive.
-    assert len(final["trace"]) == 4
-    assert final["trace"][0].startswith("triage ->")
-    assert final["trace"][-1].startswith("resolver ->")
-    assert {t.split(" ->")[0] for t in final["trace"]} == {
-        "triage",
-        "account",
-        "knowledge",
-        "resolver",
-    }
+    # Concurrent writes to `trace` must merge, not overwrite: both branches survive.
+    visited = [t.split(" ->")[0] for t in final["trace"]]
+    assert visited[0] == "triage"
+    assert {"account", "knowledge"} <= set(visited)
+    assert visited.index("resolver") > visited.index("account")
+    assert visited.index("resolver") > visited.index("knowledge")
 
 
 def test_resolver_runs_once_after_both_branches_finish(conn, collection):
