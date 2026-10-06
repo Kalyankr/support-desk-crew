@@ -98,14 +98,21 @@ def list_recent_orders(
 
 
 def get_payment(order_id: str, conn: sqlite3.Connection | None = None) -> PaymentRecord | None:
+    payments = list_payments(order_id, conn=conn)
+    return payments[0] if payments else None
+
+
+def list_payments(order_id: str, conn: sqlite3.Connection | None = None) -> list[PaymentRecord]:
+    """All payments against an order. More than one means a duplicate charge."""
     own = conn is None
     conn = conn or connect()
     try:
-        row = conn.execute(
-            "SELECT id, order_id, amount, charged_at, refunded FROM payments WHERE order_id = ?",
+        rows = conn.execute(
+            "SELECT id, order_id, amount, charged_at, refunded FROM payments "
+            "WHERE order_id = ? ORDER BY charged_at",
             (order_id,),
-        ).fetchone()
-        return _payment(row) if row else None
+        ).fetchall()
+        return [_payment(row) for row in rows]
     finally:
         if own:
             conn.close()

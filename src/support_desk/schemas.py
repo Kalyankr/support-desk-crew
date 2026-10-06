@@ -83,10 +83,18 @@ class AccountLookup(BaseModel):
 
     customer: CustomerRecord | None = None
     order: OrderRecord | None = None
-    payment: PaymentRecord | None = None
+    payments: list[PaymentRecord] = Field(default_factory=list)
     shipment: ShipmentRecord | None = None
     status: AccountStatus
     detail: str = ""
+
+    @property
+    def payment(self) -> PaymentRecord | None:
+        return self.payments[0] if self.payments else None
+
+    @property
+    def is_duplicate_charge(self) -> bool:
+        return len(self.payments) > 1
 
 
 # --- Phase 3: knowledge and resolution ---------------------------------------
@@ -112,12 +120,23 @@ ActionType = Literal[
     "escalate_to_human",
 ]
 
+# Why a refund is owed. The Resolver declares it; the Policy Guard checks the claim against
+# the account record, because the refund window applies to a change of mind but not to a
+# duplicate charge or a warranty failure.
+RefundBasis = Literal[
+    "change_of_mind",
+    "duplicate_charge",
+    "warranty",
+    "expedited_fee",
+]
+
 
 class ProposedAction(BaseModel):
     """What the Resolver wants to do. Proposed only — Phase 5's Policy Guard may veto it."""
 
     type: ActionType
     amount: float | None = None
+    basis: RefundBasis | None = None
 
     @model_validator(mode="after")
     def _amount_matches_type(self) -> ProposedAction:
@@ -125,6 +144,8 @@ class ProposedAction(BaseModel):
             raise ValueError("refund actions must state an amount")
         if self.type != "refund" and self.amount is not None:
             raise ValueError(f"{self.type} actions must not carry an amount")
+        if self.type != "refund" and self.basis is not None:
+            raise ValueError(f"{self.type} actions must not carry a refund basis")
         return self
 
     def __str__(self) -> str:

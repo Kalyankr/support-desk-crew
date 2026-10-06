@@ -113,13 +113,13 @@ def _resolve(
         )
 
     try:
-        payment = accounts_db.get_payment(order_id, conn=conn)
+        payments = accounts_db.list_payments(order_id, conn=conn)
         shipment = accounts_db.get_shipment(order_id, conn=conn)
     except sqlite3.Error as exc:
         return AccountLookup(customer=customer, order=order, status="tool_error", detail=str(exc))
 
     return AccountLookup(
-        customer=customer, order=order, payment=payment, shipment=shipment, status="found"
+        customer=customer, order=order, payments=payments, shipment=shipment, status="found"
     )
 
 
