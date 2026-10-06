@@ -81,7 +81,7 @@ logic is fully verified without a live endpoint. Only the golden-set accuracy sc
 | 2 | Tools — parameterised account lookups | **done** — tool-calling loop + deterministic fallback, fully offline |
 | 3 | Multiple agents and a graph | **code-complete, action accuracy blocked** ([details](#if-live-model-calls-are-blocked)) |
 | 4 | RAG and parallelism | **done** — 100% topical retrieval recall, branches verified concurrent |
-| 5 | Guardrails, critic, budgets | todo |
+| 5 | Guardrails, critic, budgets | **done** — zero hard-rule violations, adversarial ticket refused |
 | 6 | Human in the loop | todo |
 | 7 | Evaluation, observability, refactor | todo |
 
