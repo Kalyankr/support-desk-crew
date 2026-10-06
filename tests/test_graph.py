@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from langchain_core.messages import AIMessage
 from langgraph.graph import END, START, StateGraph
 
 from support_desk import config
@@ -241,6 +242,7 @@ def test_every_golden_ticket_runs_end_to_end(conn, collection):
         graph = build_graph(
             triage_llm=_triage_llm(ticket.expected_category),
             resolver_llm=_resolver_llm(),
+            critic_llm=_critic_llm(),
             conn=conn,
             collection=collection,
         )
@@ -253,3 +255,37 @@ def test_every_golden_ticket_runs_end_to_end(conn, collection):
             failures.append((ticket.id, "no resolution produced"))
 
     assert not failures, f"graph failed on {len(failures)} tickets: {failures}"
+
+
+def test_graph_can_drive_the_account_tool_calling_loop(conn, collection):
+    """The LLM account path is reachable through the graph, not only from unit tests."""
+
+    class _ToolLLM:
+        def __init__(self) -> None:
+            self.bound = None
+            self.calls = 0
+
+        def bind_tools(self, tools):
+            self.bound = tools
+            return self
+
+        def invoke(self, _messages):
+            self.calls += 1
+            return AIMessage(content='{"order_id": "L-10422"}')
+
+    account_llm = _ToolLLM()
+    graph = build_graph(
+        triage_llm=_triage_llm("billing"),
+        resolver_llm=_resolver_llm(),
+        critic_llm=_critic_llm(),
+        account_llm=account_llm,
+        conn=conn,
+        collection=collection,
+    )
+    final = graph.invoke(
+        initial_state("T-01", "charged twice for L-10422", "jonas.wexler@example.com")
+    )
+
+    assert account_llm.calls == 1
+    assert account_llm.bound is not None
+    assert final["account"].order.id == "L-10422"
