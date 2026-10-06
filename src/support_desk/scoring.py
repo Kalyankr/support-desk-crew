@@ -45,11 +45,5 @@ def main() -> None:
     print("PASS — Phase 1 acceptance met.")
 
 
-def config_max_cost() -> float:
-    from support_desk import config
-
-    return config.MAX_COST_PER_TICKET_USD
-
-
 if __name__ == "__main__":
     main()

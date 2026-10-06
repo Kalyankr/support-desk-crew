@@ -45,16 +45,20 @@ def test_list_recent_orders_respects_limit_and_ordering(conn):
         assert orders[0].placed_at >= orders[1].placed_at
 
 
-def test_get_payment_and_shipment_for_known_order(conn):
-    payment = accounts_db.get_payment("L-10422", conn=conn)
+def test_get_payments_and_shipment_for_known_order(conn):
+    payments = accounts_db.list_payments("L-10422", conn=conn)
     shipment = accounts_db.get_shipment("L-10422", conn=conn)
-    assert payment is not None
+    assert payments
     assert shipment is not None
-    assert payment.order_id == shipment.order_id == "L-10422"
+    assert payments[0].order_id == shipment.order_id == "L-10422"
+
+
+def test_duplicate_charge_shows_two_payments(conn):
+    assert len(accounts_db.list_payments("L-10422", conn=conn)) == 2
 
 
 def test_cancelled_order_has_no_payment(conn):
-    assert accounts_db.get_payment("L-10415", conn=conn) is None
+    assert accounts_db.list_payments("L-10415", conn=conn) == []
 
 
 # --- Injection safety ---------------------------------------------------------
@@ -65,7 +69,7 @@ def test_sql_injection_payload_is_inert_and_database_survives(conn):
 
     assert accounts_db.get_customer(payload, conn=conn) is None
     assert accounts_db.get_order(payload, conn=conn) is None
-    assert accounts_db.get_payment(payload, conn=conn) is None
+    assert accounts_db.list_payments(payload, conn=conn) == []
 
     # The payload must never have reached the SQL engine as anything but a literal string.
     counts = db.table_counts(conn)

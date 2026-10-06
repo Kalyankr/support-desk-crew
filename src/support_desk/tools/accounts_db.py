@@ -97,11 +97,6 @@ def list_recent_orders(
             conn.close()
 
 
-def get_payment(order_id: str, conn: sqlite3.Connection | None = None) -> PaymentRecord | None:
-    payments = list_payments(order_id, conn=conn)
-    return payments[0] if payments else None
-
-
 def list_payments(order_id: str, conn: sqlite3.Connection | None = None) -> list[PaymentRecord]:
     """All payments against an order. More than one means a duplicate charge."""
     own = conn is None
