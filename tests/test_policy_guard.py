@@ -69,6 +69,15 @@ def _refund(amount: float, basis: str = "change_of_mind") -> ProposedAction:
 
 _CITE = ["refund-policy.md#standard-return-window"]
 
+# What a correct Resolver would declare for each golden refund. Test-supplied on purpose:
+# nothing in the system derives this yet, so it is a fixture, not a system output.
+GOLDEN_BASIS = {
+    "T-01": "duplicate_charge",
+    "T-02": "duplicate_charge",
+    "T-17": "warranty",
+    "T-25": "expedited_fee",
+}
+
 
 # --- Rule: refund ceiling -----------------------------------------------------
 
@@ -190,16 +199,15 @@ def test_refund_on_an_order_with_no_payment_is_refused():
 # --- Phase 5 acceptance -------------------------------------------------------
 
 
-def test_every_golden_refund_survives_the_guard(conn):
-    """The guard must never refuse a refund the golden set says is owed. 100%, not 90%."""
-    from support_desk.agents.account import account_lookup
+def test_guard_allows_every_golden_refund_when_the_basis_is_correct(conn):
+    """No false vetoes: the guard must never refuse a refund the policy owes.
 
-    basis_for = {
-        "T-01": "duplicate_charge",
-        "T-02": "duplicate_charge",
-        "T-17": "warranty",
-        "T-25": "expedited_fee",
-    }
+    Scoped honestly — the basis is supplied by the test, so this proves the guard does not
+    block correct behaviour. It does NOT prove the system derives the basis correctly; that
+    needs a live Resolver. The opposite direction (a wrong basis is caught) is covered by
+    the relabelling tests below.
+    """
+    from support_desk.agents.account import account_lookup
 
     wrongly_refused = []
     for ticket in load_golden():
@@ -209,7 +217,7 @@ def test_every_golden_refund_survives_the_guard(conn):
         action = ProposedAction(
             type="refund",
             amount=ticket.expected_action.amount,
-            basis=basis_for.get(ticket.id, "change_of_mind"),
+            basis=GOLDEN_BASIS.get(ticket.id, "change_of_mind"),
         )
         decision = policy_guard.evaluate(action, account, ["refund-policy.md#x"])
         if decision.vetoed:
@@ -218,15 +226,53 @@ def test_every_golden_refund_survives_the_guard(conn):
     assert not wrongly_refused, f"guard refused refunds the policy owes: {wrongly_refused}"
 
 
+# --- Basis relabelling: the window must not be escapable by renaming the reason ---
+
+
+@pytest.mark.parametrize("basis", ["change_of_mind", "warranty", "expedited_fee"])
+def test_stale_order_is_never_auto_refunded_whatever_basis_is_claimed(basis):
+    """A model picking a different label must not turn a stale order into an automatic refund.
+
+    Before this was enforced, claiming `warranty` or `expedited_fee` on a 200-day-old order
+    passed straight through, silently bypassing the return window.
+    """
+    decision = policy_guard.evaluate(_refund(50.0, basis=basis), _account(age_days=200), _CITE)
+    assert decision.vetoed or decision.needs_approval, (
+        f"basis={basis} auto-approved a 200d order, bypassing the return window"
+    )
+
+
+def test_expedited_fee_refund_is_capped_at_the_actual_fee():
+    decision = policy_guard.evaluate(
+        _refund(249.0, basis="expedited_fee"), _account(total=274.0), _CITE
+    )
+    assert decision.vetoed
+    assert "exceeds the $25 fee" in decision.reasons[0]
+
+
+def test_legitimate_expedited_fee_refund_is_allowed():
+    decision = policy_guard.evaluate(
+        _refund(25.0, basis="expedited_fee"), _account(total=274.0), _CITE
+    )
+    assert decision.allowed
+    assert not decision.needs_approval
+
+
+def test_warranty_outside_the_return_window_requires_a_human():
+    """Code cannot see whether a unit is faulty, so it does not decide alone."""
+    decision = policy_guard.evaluate(_refund(50.0, basis="warranty"), _account(age_days=200), _CITE)
+    assert decision.allowed
+    assert decision.needs_approval
+
+
+def test_warranty_inside_the_window_needs_no_extra_approval():
+    decision = policy_guard.evaluate(_refund(50.0, basis="warranty"), _account(age_days=10), _CITE)
+    assert decision.allowed
+    assert not decision.needs_approval
+
+
 def test_approval_flag_matches_the_golden_set(conn):
     from support_desk.agents.account import account_lookup
-
-    basis_for = {
-        "T-01": "duplicate_charge",
-        "T-02": "duplicate_charge",
-        "T-17": "warranty",
-        "T-25": "expedited_fee",
-    }
 
     mismatches = []
     for ticket in load_golden():
@@ -236,7 +282,7 @@ def test_approval_flag_matches_the_golden_set(conn):
         action = ProposedAction(
             type="refund",
             amount=ticket.expected_action.amount,
-            basis=basis_for.get(ticket.id, "change_of_mind"),
+            basis=GOLDEN_BASIS.get(ticket.id, "change_of_mind"),
         )
         decision = policy_guard.evaluate(action, account, ["refund-policy.md#x"])
         if decision.needs_approval != ticket.expected_approval_required:

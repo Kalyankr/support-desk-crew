@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from support_desk import config
-from support_desk.schemas import AccountLookup, ProposedAction
+from support_desk.schemas import AccountLookup, OrderRecord, PaymentRecord, ProposedAction
 
 _MONTH = 30  # warranty is expressed in months; days-per-month need not be exact for a cap
 
@@ -83,29 +83,46 @@ def evaluate(
     if amount <= 0:
         return _veto(f"refund amount must be positive, got {amount:.2f}")
 
-    basis_veto = _check_basis(action, account, order, payments, today)
-    if basis_veto is not None:
-        return basis_veto
+    basis_decision = _check_basis(action, account, order, payments, today)
+    if basis_decision is not None and basis_decision.vetoed:
+        return basis_decision
 
     citation_check = _check_citations(action, citations)
     if citation_check.vetoed:
         return citation_check
 
+    approval_reasons: list[str] = []
+    if basis_decision is not None and basis_decision.needs_approval:
+        approval_reasons.extend(basis_decision.reasons)
+
     # Rule: any refund over the threshold goes to a human. No tier, tone or instruction
     # in the customer's message can bypass this.
     if amount > config.APPROVAL_THRESHOLD_USD:
-        return Decision(
-            allowed=True,
-            needs_approval=True,
-            reasons=(f"refund {amount:.2f} exceeds ${config.APPROVAL_THRESHOLD_USD:.0f}",),
-        )
+        approval_reasons.append(f"refund {amount:.2f} exceeds ${config.APPROVAL_THRESHOLD_USD:.0f}")
+
+    if approval_reasons:
+        return Decision(allowed=True, needs_approval=True, reasons=tuple(approval_reasons))
 
     return ALLOW
 
 
-def _check_basis(action, account, order, payments, today) -> Decision | None:
+def _check_basis(
+    action: ProposedAction,
+    account: AccountLookup | None,
+    order: OrderRecord,
+    payments: list[PaymentRecord],
+    today: date,
+) -> Decision | None:
+    """Verify the Resolver's stated reason against the record.
+
+    A basis is a claim, not a fact. Without this, the return window would be trivially
+    escapable: relabel a stale change-of-mind return as a warranty claim and it sails through.
+    Where code cannot verify the claim at all (a fault is not visible in the database), the
+    answer is a human, not a guess.
+    """
     tier = account.customer.tier if account and account.customer else "standard"
     age = (today - order.placed_at).days
+    amount = action.amount or 0.0
     basis = action.basis
 
     if basis is None:
@@ -114,13 +131,21 @@ def _check_basis(action, account, order, payments, today) -> Decision | None:
     if basis == "duplicate_charge":
         if len(payments) < 2:
             return _veto(f"duplicate charge claimed but order {order.id} has one payment")
-        if (action.amount or 0) > max(p.amount for p in payments):
+        if amount > max(p.amount for p in payments):
             return _veto("duplicate refund exceeds the duplicated payment")
         return None
 
     if basis == "warranty":
         if age > config.WARRANTY_MONTHS * _MONTH:
             return _veto(f"order {order.id} is {age}d old, outside the warranty period")
+        if age > _window_days(tier):
+            # The database cannot show whether the unit is actually faulty, so a warranty
+            # claim that also escapes the return window is verified by a person.
+            return Decision(
+                allowed=True,
+                needs_approval=True,
+                reasons=(f"warranty claim on a {age}d order needs a human to confirm the fault",),
+            )
         return None
 
     if basis == "change_of_mind":
@@ -129,8 +154,10 @@ def _check_basis(action, account, order, payments, today) -> Decision | None:
             return _veto(f"order {order.id} is {age}d old, outside the {window}d {tier} window")
         return None
 
-    if basis == "expedited_fee" and (action.amount or 0) > order.total:
-        return _veto("expedited fee refund exceeds the order total")
+    if basis == "expedited_fee" and amount > config.EXPEDITED_FEE_USD:
+        return _veto(
+            f"expedited fee refund {amount:.2f} exceeds the ${config.EXPEDITED_FEE_USD:.0f} fee"
+        )
 
     return None
 
