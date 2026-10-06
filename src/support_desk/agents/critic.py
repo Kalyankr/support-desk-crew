@@ -60,11 +60,15 @@ class _ChatModel(Protocol):
 def critique(
     resolution: Resolution,
     knowledge: KnowledgeResult | None,
-    llm: _ChatModel,
+    llm: _ChatModel | None,
     meter: BudgetMeter | None = None,
     max_retries: int = 1,
 ) -> CriticVerdict:
     """Approve the draft or send it back. Unparsable output approves, deliberately."""
+    if llm is None:
+        # Distinct from a failed call: no critic was configured, so there is nothing to report.
+        return CriticVerdict(verdict="approve", feedback="no critic configured")
+
     policy = "\n\n".join(knowledge.snippets) if knowledge and knowledge.snippets else "none"
     context = (
         f"proposed action: {resolution.action}\n"
