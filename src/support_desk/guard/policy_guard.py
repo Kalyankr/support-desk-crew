@@ -13,8 +13,9 @@ T-17 is a 134-day-old order that must still be refunded).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import date
+
+from pydantic import BaseModel, Field
 
 from support_desk import config
 from support_desk.schemas import AccountLookup, OrderRecord, PaymentRecord, ProposedAction
@@ -22,11 +23,18 @@ from support_desk.schemas import AccountLookup, OrderRecord, PaymentRecord, Prop
 _MONTH = 30  # warranty is expressed in months; days-per-month need not be exact for a cap
 
 
-@dataclass(frozen=True)
-class Decision:
+class Decision(BaseModel):
+    """Pydantic rather than a dataclass so it survives checkpointing unchanged.
+
+    A frozen dataclass round-trips through the checkpoint serializer with `reasons` turned
+    from a tuple into a list, which breaks equality after a resume.
+    """
+
+    model_config = {"frozen": True}
+
     allowed: bool
     needs_approval: bool = False
-    reasons: tuple[str, ...] = field(default_factory=tuple)
+    reasons: tuple[str, ...] = Field(default_factory=tuple)
 
     @property
     def vetoed(self) -> bool:
