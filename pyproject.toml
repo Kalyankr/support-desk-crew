@@ -43,6 +43,7 @@ packages = ["src/support_desk"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+markers = ["slow: spawns real subprocesses; durability checks"]
 
 [tool.ruff]
 src = ["src", "tests"]
