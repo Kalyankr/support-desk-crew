@@ -12,7 +12,7 @@ other. Every other field is written by exactly one node, which is why plain over
 from __future__ import annotations
 
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, TypedDict
 
 from support_desk.agents.critic import CriticVerdict
 from support_desk.guard.policy_guard import Decision
@@ -29,6 +29,7 @@ class TicketState(TypedDict):
     resolution: Resolution | None
     guard: Decision | None
     verdict: CriticVerdict | None
+    approval: dict[str, Any] | None
     feedback: Annotated[list[str], operator.add]
     needs_approval: bool
     attempts: int
@@ -46,6 +47,7 @@ def initial_state(ticket_id: str, ticket_text: str, customer_email: str) -> Tick
         resolution=None,
         guard=None,
         verdict=None,
+        approval=None,
         feedback=[],
         needs_approval=False,
         attempts=0,
