@@ -4,11 +4,12 @@ The whole topology lives in this one file on purpose. Agents stay ignorant of ea
 routing is a property of the system, not of any agent, and keeping it in one readable place
 is what lets you answer "why did this ticket do that?" without reading five prompts.
 
-Phase 5 topology:
+Phase 6 topology:
 
     START -> triage -> { account, knowledge }  (concurrent) -> resolver -> guard
-    guard  -> critic | resolver (vetoed) | escalate (out of revisions)
-    critic -> END    | resolver (revise)  | escalate (out of revisions)
+    guard    -> critic | approval (high risk) | resolver (vetoed) | escalate (out of revisions)
+    approval -> critic (approved) | escalate (rejected)      <- interrupts, waits for a human
+    critic   -> END    | resolver (revise)    | escalate (out of revisions)
 
 Routing is deterministic code reading `triage.category`. The model decides the category;
 it does not decide the route. Account and knowledge run in the same superstep and write
@@ -25,6 +26,7 @@ from functools import partial
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import interrupt
 
 from support_desk import config
 from support_desk.agents.account import account_lookup, account_lookup_llm
@@ -118,6 +120,45 @@ def escalate_node(state: TicketState) -> dict[str, Any]:
     }
 
 
+def approval_node(state: TicketState) -> dict[str, Any]:
+    """Stop and wait for a person. Execution resumes here, possibly days later.
+
+    The payload is everything a reviewer needs to judge the decision rather than rubber-stamp
+    it: the action, why the guard flagged it, the facts it rests on, and the path that got here.
+    """
+    resolution = state["resolution"]
+    decision = state["guard"]
+    account = state["account"]
+    order = account.order if account else None
+
+    answer = interrupt(
+        {
+            "ticket_id": state["ticket_id"],
+            "ticket_text": state["ticket_text"],
+            "customer_email": state["customer_email"],
+            "action": str(resolution.action),
+            "amount": resolution.action.amount,
+            "basis": resolution.action.basis,
+            "reply": resolution.reply,
+            "citations": resolution.citations,
+            "why_flagged": list(decision.reasons) if decision else [],
+            "order": order.model_dump(mode="json") if order else None,
+            "order_total": order.total if order else None,
+            "trace": list(state["trace"]),
+        }
+    )
+
+    approved = bool(answer.get("approved", False))
+    reason = str(answer.get("reason", ""))
+    update: dict[str, Any] = {
+        "approval": {"approved": approved, "reason": reason},
+        "trace": [f"approval -> {'approved' if approved else 'rejected'}"],
+    }
+    if not approved:
+        update["feedback"] = [f"a human rejected {resolution.action}: {reason}"]
+    return update
+
+
 def route_after_triage(state: TicketState) -> list[str]:
     """Deterministic fan-out: the model chose the category, this code chooses the paths.
 
@@ -136,7 +177,15 @@ def route_after_guard(state: TicketState) -> str:
     decision = state["guard"]
     if decision is not None and decision.vetoed:
         return "resolver" if state["attempts"] <= config.MAX_REVISIONS else "escalate"
+    if decision is not None and decision.needs_approval:
+        return "approval"
     return "critic"
+
+
+def route_after_approval(state: TicketState) -> str:
+    """A rejected action never reaches the customer; a human takes the ticket instead."""
+    approval = state["approval"]
+    return "critic" if approval and approval.get("approved") else "escalate"
 
 
 def route_after_critic(state: TicketState) -> str:
@@ -154,6 +203,7 @@ def build_graph(
     conn: sqlite3.Connection | None = None,
     meter: BudgetMeter | None = None,
     collection: Any | None = None,
+    checkpointer: Any | None = None,
 ) -> Any:
     """Build the graph. Every dependency is injected so the whole thing runs offline."""
     builder = StateGraph(TicketState)
@@ -163,6 +213,7 @@ def build_graph(
     builder.add_node("knowledge", partial(knowledge_node, collection=collection))
     builder.add_node("resolver", partial(resolver_node, llm=resolver_llm, meter=meter))
     builder.add_node("guard", guard_node)
+    builder.add_node("approval", approval_node)
     builder.add_node("critic", partial(critic_node, llm=critic_llm, meter=meter))
     builder.add_node("escalate", escalate_node)
 
@@ -175,8 +226,11 @@ def build_graph(
     builder.add_edge("account", "resolver")
     builder.add_edge("knowledge", "resolver")
     builder.add_edge("resolver", "guard")
-    builder.add_conditional_edges("guard", route_after_guard, ["resolver", "critic", "escalate"])
+    builder.add_conditional_edges(
+        "guard", route_after_guard, ["resolver", "approval", "critic", "escalate"]
+    )
+    builder.add_conditional_edges("approval", route_after_approval, ["critic", "escalate"])
     builder.add_conditional_edges("critic", route_after_critic, ["resolver", "escalate", END])
     builder.add_edge("escalate", END)
 
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)
