@@ -7,6 +7,7 @@ systems comes from loop count, not from any single oversized request.
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 
 from support_desk import config
@@ -41,11 +42,14 @@ class BudgetMeter:
     max_cost_usd: float = config.MAX_COST_PER_TICKET_USD
     max_tokens: int = config.MAX_TOKENS_PER_TICKET
     entries: list[Usage] = field(default_factory=list)
+    # The graph fans out to concurrent nodes, so appending and checking must not interleave.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record(self, agent: str, model: str, prompt_tokens: int, completion_tokens: int) -> Usage:
         usage = Usage(agent, model, prompt_tokens, completion_tokens)
-        self.entries.append(usage)
-        self._enforce()
+        with self._lock:
+            self.entries.append(usage)
+            self._enforce()
         return usage
 
     @property
