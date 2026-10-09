@@ -83,21 +83,37 @@ logic is fully verified without a live endpoint. Only the golden-set accuracy sc
 | 4 | RAG and parallelism | **done** — 100% topical retrieval recall, branches verified concurrent |
 | 5 | Guardrails, critic, budgets | **done** — zero hard-rule violations, adversarial ticket refused |
 | 6 | Human in the loop | **done** — survives a real process kill, no high-risk action escapes |
-| 7 | Evaluation, observability, refactor | todo |
+| 7 | Evaluation, observability, refactor | **done** — scorecard, JSON traces, failure injection |
 
 ## Scorecard
 
-Update at the end of every phase.
+`uv run support-desk-scorecard` regenerates this. Blocked rows stay blocked rather than being
+filled with a scripted model's output — a test guards against exactly that.
 
 | Metric | Target | Current |
 |---|---|---|
-| Routing accuracy | ≥ 90% | — |
-| Action accuracy | ≥ 85% | — |
-| Groundedness (citations valid) | ≥ 95% | — |
-| Hard-rule violations | 0 | — |
-| High-risk actions escaping approval | 0 | — |
-| Mean cost / ticket | ≤ $0.05 | — |
-| p95 latency | < 20s | — |
+| Account resolution | ≥ 90% | **100%** |
+| Retrieval recall (topical) | ≥ 90% | **100%** |
+| Hard-rule violations | 0 | **0** |
+| High-risk actions escaping approval | 0 | **0** |
+| p95 latency (orchestration) | < 20s | **0.54s** |
+| Mean model calls / ticket | — | **3.00** |
+| Triage accuracy | ≥ 85% | blocked — needs a live model |
+| Action accuracy | ≥ 85% | blocked — needs a live model |
+| Draft groundedness | ≥ 95% | blocked — needs a live model |
+
+### Which agents earn their keep
+
+| Agent | Model calls | Verdict |
+|---|---|---|
+| triage | 1 | Keep — classifying free text needs judgment |
+| resolver | 1 | Keep — the only agent choosing an action and writing prose |
+| critic | 1 | Keep, but it is the first thing to cut under cost pressure |
+| account | **0** | Not an LLM agent at all — regex + parameterised SQL |
+| knowledge | **0** | Embedding lookup; cuts policy context per ticket by 60% |
+| guard | **0** | Plain Python by design — a control, not a request |
+
+Half the "agents" need no model. That is the most useful number in this repo.
 
 ## Ground rules
 
