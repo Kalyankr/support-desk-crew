@@ -72,7 +72,13 @@ def triage(
     model = llm if llm is not None else _client()
 
     for _attempt in range(max_retries + 1):
-        response = model.invoke([("system", _SYSTEM_PROMPT), ("human", ticket_text)])
+        try:
+            response = model.invoke([("system", _SYSTEM_PROMPT), ("human", ticket_text)])
+        except Exception as exc:
+            # A provider outage must degrade this ticket, not take down the graph.
+            logger.warning("triage call failed: %s", exc)
+            break
+
         content = response.content if isinstance(response.content, str) else str(response.content)
 
         if meter is not None:
