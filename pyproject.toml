@@ -27,6 +27,7 @@ dev = [
 [project.scripts]
 support-desk-verify = "support_desk.data.verify:main"
 support-desk-score-triage = "support_desk.scoring:main"
+support-desk-scorecard = "support_desk.evals:main"
 
 [tool.uv]
 # `uv sync` installs the dev group without being asked.
