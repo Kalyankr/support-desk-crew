@@ -36,6 +36,7 @@ from support_desk.agents.resolver import resolve
 from support_desk.agents.triage import triage
 from support_desk.guard import policy_guard
 from support_desk.observability.budget import BudgetMeter
+from support_desk.observability.trace import TicketTrace
 from support_desk.schemas import ProposedAction, Resolution
 from support_desk.state import TicketState
 
@@ -195,6 +196,18 @@ def route_after_critic(state: TicketState) -> str:
     return END
 
 
+def _traced(name: str, fn: Any, tracer: TicketTrace | None) -> Any:
+    """Wrap a node so timing is recorded here rather than repeated in every node body."""
+    if tracer is None:
+        return fn
+
+    def node(state: TicketState) -> dict[str, Any]:
+        with tracer.span(name):
+            return fn(state)
+
+    return node
+
+
 def build_graph(
     triage_llm: Any,
     resolver_llm: Any,
@@ -204,18 +217,23 @@ def build_graph(
     meter: BudgetMeter | None = None,
     collection: Any | None = None,
     checkpointer: Any | None = None,
+    tracer: TicketTrace | None = None,
 ) -> Any:
     """Build the graph. Every dependency is injected so the whole thing runs offline."""
     builder = StateGraph(TicketState)
 
-    builder.add_node("triage", partial(triage_node, llm=triage_llm, meter=meter))
-    builder.add_node("account", partial(account_node, llm=account_llm, conn=conn, meter=meter))
-    builder.add_node("knowledge", partial(knowledge_node, collection=collection))
-    builder.add_node("resolver", partial(resolver_node, llm=resolver_llm, meter=meter))
-    builder.add_node("guard", guard_node)
-    builder.add_node("approval", approval_node)
-    builder.add_node("critic", partial(critic_node, llm=critic_llm, meter=meter))
-    builder.add_node("escalate", escalate_node)
+    nodes = {
+        "triage": partial(triage_node, llm=triage_llm, meter=meter),
+        "account": partial(account_node, llm=account_llm, conn=conn, meter=meter),
+        "knowledge": partial(knowledge_node, collection=collection),
+        "resolver": partial(resolver_node, llm=resolver_llm, meter=meter),
+        "guard": guard_node,
+        "approval": approval_node,
+        "critic": partial(critic_node, llm=critic_llm, meter=meter),
+        "escalate": escalate_node,
+    }
+    for name, fn in nodes.items():
+        builder.add_node(name, _traced(name, fn, tracer))
 
     builder.add_edge(START, "triage")
     builder.add_conditional_edges(
